@@ -24,14 +24,17 @@ class StrongSORT(object):
     def __init__(
             self, 
             device, 
-            max_dist = 0.2, 
+            max_appearance_distance = 0.2, 
             nn_budget = 100, 
             max_iou_distance = 0.7, 
             max_age = 70, 
             n_init = 3, 
             ema_alpha = 0.9, 
             mc_lambda = 0.995, 
-            matching_cascade = False
+            matching_cascade = False,
+            only_position = False,            
+            motion_gate_coefficient = 1.0, 
+            max_centroid_distance = None
         ):
         if not osp.isfile(EXTRACTOR_PATH):
             print(f'Feature extractor not found in {EXTRACTOR_PATH}')
@@ -51,10 +54,11 @@ class StrongSORT(object):
             verbose=False
         )
 
-        self.max_dist = max_dist
-        metric = NearestNeighborDistanceMetric("cosine", self.max_dist, nn_budget)
+        appearance_metric = NearestNeighborDistanceMetric("cosine", nn_budget)
         self.tracker = Tracker(
-            metric, max_iou_distance, max_age, n_init, ema_alpha, mc_lambda, matching_cascade)
+            appearance_metric, max_appearance_distance, max_iou_distance, max_age, n_init, 
+            ema_alpha, mc_lambda, matching_cascade, only_position, motion_gate_coefficient, 
+            max_centroid_distance)
 
     def update(self, bbox_xywh, confidences, classes, ori_img):
         self.height, self.width = ori_img.shape[:2]
