@@ -74,8 +74,7 @@ class Track:
             conf, 
             n_init, 
             max_age, 
-            ema_alpha, 
-            feature = None
+            ema_alpha
         ):
         self.track_id = track_id
         self.class_id = int(class_id)
@@ -85,17 +84,14 @@ class Track:
         self.ema_alpha = ema_alpha
 
         self.state = TrackState.Tentative
-        self.features = []
-        if feature is not None:
-            feature /= np.linalg.norm(feature)
-            self.features.append(feature)
+        self.features = [detection.feature / np.linalg.norm(detection.feature)]
 
         self.conf = conf
         self._n_init = n_init
         self._max_age = max_age
 
         self.kf = KalmanFilter()
-        self.mean, self.covariance = self.kf.initiate(detection)
+        self.mean, self.covariance = self.kf.initiate(detection.to_xyah())
         self.last_association = detection
 
     def to_tlwh(self):
@@ -136,7 +132,7 @@ class Track:
         ndarray
             The bounding box from the last detection associated to the track.
         """
-        return self.last_association.copy()
+        return self.last_association.to_xyah()
 
     def ECC(self, src, dst, warp_mode = cv2.MOTION_EUCLIDEAN, eps = 1e-5,
         max_iter = 100, scale = 0.1, align = False):
@@ -290,7 +286,7 @@ class Track:
         """
         self.conf = conf
         self.class_id = class_id.int()
-        self.last_association = detection.to_xyah()
+        self.last_association = detection
         self.mean, self.covariance = self.kf.update(self.mean, self.covariance, detection.to_xyah(), detection.confidence)
 
         feature = detection.feature / np.linalg.norm(detection.feature)

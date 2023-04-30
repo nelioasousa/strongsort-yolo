@@ -196,9 +196,9 @@ def detect(opt):
             # Rescale boxes from img_size to im0 size
             detections[:, :4] = scale_coords(img.shape[2:], detections[:, :4], im0.shape).round()
 
-            xywhs = xyxy2xywh(detections[:, 0:4]).type(torch.int16)
+            xyxys = detections[:, :4].type(torch.int32)
             confs = detections[:, 4]
-            classes = detections[:, 5].type(torch.int16) # uint16 type is not supported by pytorch
+            classes = detections[:, 5].type(torch.int32)
 
             cls_counts = zip(*torch.unique(classes, return_counts=True))
             cls_counts = [f'{names[i.item()]} x{j.item()}' for i, j in cls_counts]
@@ -206,18 +206,16 @@ def detect(opt):
 
             # pass detections to strongsort
             t4 = time_synchronized()
-            sort_output = strong_sort.update(xywhs.cpu(), confs.cpu(), classes.cpu(), im0)
+            sort_output = strong_sort.update(xyxys.cpu(), confs.cpu(), classes.cpu(), im0)
             t5 = time_synchronized()
             dt[3] += t5 - t4
             
             if sort_output.any():
                 for output in sort_output:
-                    bbox = output[0:4]
-                    track_id, cls, conf = output[4:]
-
+                    tlwh = output[:4]
+                    track_id, cls, conf = int(output[4]), int(output[5]), output[6]
                     if opt.draw_trajectory:
-                        # object trajectory
-                        center = int(bbox[[0, 2]].sum() / 2 + 0.5), int(bbox[[1, 3]].sum() / 2 + 0.5)
+                        center = tuple((tlwh[:2] + tlwh[2:] / 2).round().astype(np.int32).tolist())
                         track_trajs = trajectorys.setdefault(track_id, [])
                         track_trajs.append(center)
                         for c in range(-1, -21, -1):  # Draw only the last 20 points
@@ -229,19 +227,19 @@ def detect(opt):
 
                     if opt.save_txt:
                         # frame_id, track_id, clas_id, tlwh bbox, detection conf
-                        result_line = ' '.join(['%d'] * 7) %(frame_id, track_id, cls, 
-                                                             bbox[[0, 2]].min(), bbox[[1, 3]].min(), 
-                                                             *np.abs(bbox[[2, 3]] - bbox[[0, 1]]))
-                        result_line += f' {conf:.2e}\n' if opt.save_conf else '\n' 
+                        result_line = ' '.join(output[:7].astype(np.int32).astype(np.str_))
+                        result_line += f' {output[-1]:.2f}\n' if opt.save_conf else '\n' 
                         with open(txt_path, 'a') as f:
                             f.write(result_line)
 
                     if opt.save_vid:  # Add bbox to image
+                        xyxy = output[:4]
+                        xyxy[2:] = xyxy[:2] + xyxy[2:]
                         label = None if opt.hide_labels else (str(track_id) if opt.hide_conf and opt.hide_class else \
                                                               f'{track_id} {names[cls]}' if opt.hide_conf else \
                                                               f'{track_id} {conf:.2f}' if opt.hide_class else \
                                                               f'{track_id} {names[cls]} {conf:.2f}')
-                        plot_one_box(bbox, im0, label=label, color=colors[cls], line_thickness=opt.line_thickness)
+                        plot_one_box(xyxy, im0, label=label, color=colors[cls], line_thickness=opt.line_thickness)
 
         else:
             strong_sort.increment_ages()
