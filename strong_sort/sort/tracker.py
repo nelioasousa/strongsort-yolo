@@ -216,3 +216,8 @@ class Tracker:
         if track.initialize(detection):
             self._next_id += 1
             self.tracks.append(track)
+    
+    def restart(self):
+        self.tracks = []
+        self._next_id = 1
+        self.appearance_metric.restart()

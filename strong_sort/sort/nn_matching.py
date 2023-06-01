@@ -158,3 +158,6 @@ class NearestNeighborDistanceMetric(object):
         for i, target in enumerate(targets):
             cost_matrix[i, :] = self._metric(self.samples[target], features)
         return cost_matrix
+    
+    def restart(self):
+        self.samples = {}
