@@ -136,7 +136,7 @@ def detect(opt):
         save_txt_fmt = ' '.join(['%d'] * 7 + (['%.2f'] if opt.save_conf else []))
         save_txt_cols = list(range(8 if opt.save_conf else 7))
 
-    save_argparser_arguments(opt, str(save_dir / 'arguments.txt'), opt.exist_ok)
+    save_argparser_arguments(opt, str(save_dir / 'arguments.txt'), False)
 
     # Initialize
     set_logging()
@@ -172,10 +172,7 @@ def detect(opt):
     num_videos = sum(dataset.video_flag)
     num_images = dataset.nf - num_videos
     num_sources = num_videos + bool(num_images)
-    source_pad = len(str(num_sources))
-    
-    if opt.save_img and not dataset.video_flag[0]:
-        (save_dir / 'images' / 'imgs').mkdir(parents=True, exist_ok=True)
+    source_padding = len(str(num_sources))
 
     # cfg = get_config(config_file=opt.config_strongsort)
 
@@ -193,42 +190,49 @@ def detect(opt):
 
     # Run tracking
     dt = [0.0, 0.0, 0.0, 0.0]
-    strong_sort, actual_path, vid_writer, curr_frames, prev_frames, txt_path = [None] * 6
+    vid_writer, curr_frames, prev_frames, txt_path = [None] * 4
+    strong_sort = _build_strong_sort(opt)
+    trajectorys = {}
+    
+    if num_images:
+        num_frames = num_images
+        num_frames_padding = len(str(num_frames))
+        txt_path = str(save_dir / 'labels' / 'image_sequence.txt')
+        if opt.save_vid:
+            vid_writer = cv2.VideoWriter(str(save_dir / 'video_from_imgs.mp4'), 
+                                         cv2.VideoWriter_fourcc(*'mp4v'), 
+                                         15, im0.shape[:2][::-1])
+        if opt.save_img:
+            imgs_path = save_dir / 'images' / 'imgs'
+            imgs_path.mkdir(parents=True, exist_ok=True)
+
     for path, img, im0, vid_cap in dataset:
+        frame_id = getattr(dataset, 'frame', dataset.count)
         curr_frames = im0
-        path_base_name = osp.splitext(osp.basename(path))[0]
+        base_name = osp.splitext(osp.basename(path))[0]
         
-        if path != actual_path:
-            if dataset.mode == 'video':
-                if not opt.video_sequence or strong_sort is None:
-                    strong_sort = _build_strong_sort(opt)
-                    trajectorys = {}
-                if opt.save_img:
-                    (save_dir / 'images' / path_base_name).mkdir(parents=True, exist_ok=True)
-                if opt.save_txt:
-                    txt_path = str(save_dir / 'labels' / f'{path_base_name}.txt')
-                if opt.save_vid:
-                    try:
-                        vid_writer.release()
-                    except AttributeError:
-                        pass
-                    video_path = str(save_dir / f'{path_base_name}.mp4')
-                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                    resolution = (int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH)), 
-                                  int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                    vid_writer = cv2.VideoWriter(video_path, fourcc, fps, resolution)
-            else:
-                if strong_sort is None:
-                    strong_sort = _build_strong_sort(opt)
-                    trajectorys = {}
-                if opt.save_vid and vid_writer is None:
-                    vid_writer = cv2.VideoWriter(str(save_dir / 'video_from_imgs.mp4'), 
-                                                 cv2.VideoWriter_fourcc(*'mp4v'), 
-                                                 20, im0.shape[-2:][::-1])
-                if opt.save_txt and txt_path is None:
-                    txt_path = str(save_dir / 'labels' / 'image_sequence.txt')
-            actual_path = path
+        if vid_cap and dataset.frame == 1:
+            strong_sort.restart()
+            trajectorys = {}
+            num_frames = dataset.nframes
+            num_frames_padding = len(str(num_frames))
+            txt_path = str(save_dir / 'labels' / f'{base_name}.txt')
+            if opt.save_img:
+                imgs_path = save_dir / 'images' / base_name
+                imgs_path.mkdir(parents=True, exist_ok=True)
+            if opt.save_vid:
+                try: vid_writer.release()
+                except AttributeError: pass
+                video_save_path = str(save_dir / f'{base_name}.mp4')
+                fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                resolution = (int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH)), 
+                              int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                vid_writer = cv2.VideoWriter(video_save_path, fourcc, fps, resolution)
+        
+        result_message = 'source %d/%d (%dx%d %s) | frame %d/%d |' %(
+            1 if dataset.mode == 'image' else (1 + dataset.count - max(num_images - 1, 0)), 
+            num_sources, *im0.shape[:2][::-1], dataset.mode, frame_id, num_frames)
 
         t1 = time_synchronized()
         img = torch.from_numpy(img).to(device)
@@ -255,12 +259,6 @@ def detect(opt):
         # Rescale boxes from img_size to im0 size
         detections[:, :4] = scale_coords(img.shape[2:], detections[:, :4], im0.shape).round()
         detections = detection_filter(detections)
-
-        frame_id = getattr(dataset, 'frame', dataset.count)
-        total_frames = getattr(dataset, 'nframes', dataset.nf - sum(dataset.video_flag))
-        result_message = 'source %d/%d (%dx%d %s) | frame %d/%d |' %(
-            1 if dataset.mode == 'image' else (1 + dataset.count - max(num_images - 1, 0)), 
-            num_sources, *im0.shape[:2][::-1], dataset.mode, frame_id, total_frames)
         
         if opt.ecc:  # camera motion compensation
             strong_sort.tracker.camera_update(prev_frames, curr_frames)
@@ -319,10 +317,10 @@ def detect(opt):
         if opt.verbose:
             print(f'{result_message} YOLO {dt[1]:.3e}s, StrongSORT {dt[3]:.3e}s')
         else:
-            p = 100.0 * frame_id / total_frames
+            p = 100.0 * frame_id / num_frames
             s = int(p // 5)
             result_message = '\r{} of {} sources [{: <20}] {:.1f}% '.format(
-                f'{(1 if dataset.mode == "image" else (1 + dataset.count - max(num_images - 1, 0))): >{source_pad}}', 
+                f'{(1 if dataset.mode == "image" else (1 + dataset.count - max(num_images - 1, 0))): >{source_padding}}', 
                 num_sources, "-" * (s - 1) + ("-" if s == 20 else ">" if s else ""), p)
             print(result_message, end='', flush=True)
         
@@ -372,12 +370,8 @@ def detect(opt):
         #         break
 
         if opt.save_img:
-            padding = len(str(total_frames))
-            file_name = f'{frame_id:0>{padding}}_{path_base_name}.jpg'
-            if dataset.mode == 'image':
-                save_img_result = cv2.imwrite(str(save_dir / 'images' / 'imgs' / file_name), im0)
-            else:
-                save_img_result = cv2.imwrite(str(save_dir / 'images' / path_base_name / file_name), im0)
+            file_name = f'{frame_id:0>{num_frames_padding}}_{base_name}.jpg'
+            save_img_result = cv2.imwrite(str(imgs_path / file_name), im0)
             if not save_img_result and opt.verbose:
                 print('Error while saving image/frame:')
                 print('    - Frame ID :', frame_id)
@@ -387,6 +381,12 @@ def detect(opt):
             vid_writer.write(im0)
 
         prev_frames = curr_frames
+    
+    try:
+        vid_writer.release()
+        vid_cap.release()
+    except AttributeError:
+        pass
     
     if opt.save_txt or opt.save_vid or opt.save_img:
         print(f'Results saved to {save_dir}')
@@ -462,12 +462,6 @@ if __name__ == '__main__':
         '--source', 
         type=str, default='.', 
         help='Source data (video file or directory with images or/and videos) for tracking'
-    )
-
-    parser.add_argument(
-        '--video-sequence', 
-        action='store_true', 
-        help='Keep tracker alive (do not reinstantiate) between videos'
     )
 
     parser.add_argument(

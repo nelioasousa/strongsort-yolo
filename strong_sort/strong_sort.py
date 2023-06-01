@@ -100,3 +100,6 @@ class StrongSORT(object):
             im = image[y1:y2, x1:x2]
             crops.append(im)
         return self.extractor(crops)
+    
+    def restart(self):
+        self.tracker.restart()
