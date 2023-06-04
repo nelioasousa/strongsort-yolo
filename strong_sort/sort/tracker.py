@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import numpy as np
 from . import kalman_filter
 from . import linear_assignment
-from . import iou_matching
+from .iou_matching import iou_cost
 from .track import Track
 
 
@@ -52,7 +52,8 @@ class Tracker:
             motion_gate_coefficient = 1.0, 
             max_centroid_distance = None, 
             max_velocity = None,
-            track_killer = None
+            track_killer = None,
+            iou_cost_increment = 0.0
         ):
         self.appearance_metric = appearance_metric
         self.max_appearance_distance = max_appearance_distance
@@ -66,6 +67,7 @@ class Tracker:
         self.mc_lambda = mc_lambda
         self.matching_cascade = matching_cascade
         self.only_position = only_position
+        self.iou_cost_increment = iou_cost_increment
 
         self.jump_gater = self.get_association_jump_gater()
         self.tracks = []
@@ -108,7 +110,7 @@ class Tracker:
             [np.linalg.norm(dts_centroids - c, axis=1) for c in tks_centroids], dtype=np.float32)
 
     def gated_iou_metric(self, *args, **kwargs):
-        cost_matrix = iou_matching.iou_cost(*args, **kwargs)
+        cost_matrix = iou_cost(*args, **kwargs)
         gate = cost_matrix > self.max_iou_distance
         cost_matrix[gate] = cost_matrix[gate] + linear_assignment.INFTY_COST
         return cost_matrix
@@ -184,6 +186,9 @@ class Tracker:
         # Final cost matrix
         lmb = self.mc_lambda
         appearance_cost_matrix[:] = lmb * appearance_cost_matrix + (1 - lmb) * motion_cost_matrix
+        if self.iou_cost_increment:
+            increment = iou_cost(tracks, detections, track_indices, detection_indices)
+            appearance_cost_matrix[:] = appearance_cost_matrix + self.iou_cost_increment * increment
         appearance_cost_matrix[gate] = appearance_cost_matrix[gate] + linear_assignment.INFTY_COST
         return appearance_cost_matrix
 
