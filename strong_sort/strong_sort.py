@@ -53,7 +53,7 @@ class StrongSORT(object):
             model_path=EXTRACTOR_PATH, 
             device=str(device), 
             image_size=(256, 128), 
-            pixel_norm=False, 
+            pixel_norm=True, 
             verbose=False
         )
 
