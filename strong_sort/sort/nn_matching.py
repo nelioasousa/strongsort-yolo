@@ -66,10 +66,10 @@ def _nn_euclidean_distance(x, y):
         A vector of length M that contains for each entry in `y` the
         smallest Euclidean distance to a sample in `x`.
     """
-    x_ = torch.from_numpy(np.asarray(x) / np.linalg.norm(x, axis=1, keepdims=True))
-    y_ = torch.from_numpy(np.asarray(y) / np.linalg.norm(y, axis=1, keepdims=True))
-    distances = compute_distance_matrix(x_, y_, metric='euclidean')
-    return np.maximum(0.0, torch.min(distances, axis=0)[0].numpy())
+    x_ = torch.from_numpy(x)
+    y_ = torch.from_numpy(y)
+    l2_dist = compute_distance_matrix(x_, y_, metric='euclidean').detach().cpu().numpy()
+    return l2_dist.min() / 2.0  # greatest distance between unit vectors is 2
 
 
 def _nn_cosine_distance(x, y):
@@ -86,11 +86,9 @@ def _nn_cosine_distance(x, y):
         A vector of length M that contains for each entry in `y` the
         smallest cosine distance to a sample in `x`.
     """
-    x_ = torch.from_numpy(np.asarray(x))
-    y_ = torch.from_numpy(np.asarray(y))
-    distances = compute_distance_matrix(x_, y_, metric='cosine')
-    distances = distances.cpu().detach().numpy()
-    return distances.min(axis=0)
+    x_ = torch.from_numpy(x)
+    y_ = torch.from_numpy(y)
+    return compute_distance_matrix(x_, y_, metric='cosine').detach().cpu().numpy().min()
 
 
 class NearestNeighborDistanceMetric(object):
@@ -119,10 +117,10 @@ class NearestNeighborDistanceMetric(object):
         else:
             raise ValueError(
                 "Invalid metric; must be either 'euclidean' or 'cosine'")
-        self.budget = budget
+        self.budget = budget * 6 if budget else budget
         self.samples = {}
 
-    def partial_fit(self, features, targets, active_targets):
+    def partial_fit(self, targets, associated_features, active_targets):
         """Update the distance metric with new data.
         Parameters
         ----------
@@ -133,13 +131,18 @@ class NearestNeighborDistanceMetric(object):
         active_targets : List[int]
             A list of targets that are currently present in the scene.
         """
-        for feature, target in zip(features, targets):
-            self.samples.setdefault(target, []).append(feature)
-            if self.budget is not None:
-                self.samples[target] = self.samples[target][-self.budget:]
+        try:
+            feature_size = associated_features.shape[2]
+            for target, features in zip(targets, associated_features):
+                target_bank = self.samples.setdefault(target, np.zeros((0, feature_size), dtype=np.float32))
+                self.samples[target] = np.r_[target_bank, features]
+                if self.budget is not None:
+                    self.samples[target] = self.samples[target][-self.budget:]
+        except IndexError:
+            pass
         self.samples = {k: self.samples[k] for k in active_targets}
 
-    def distance(self, features, targets):
+    def distance(self, targets, incoming_features):
         """Compute distance between features and targets.
         Parameters
         ----------
@@ -154,9 +157,10 @@ class NearestNeighborDistanceMetric(object):
             element (i, j) contains the closest squared distance between
             `targets[i]` and `features[j]`.
         """
-        cost_matrix = np.zeros((len(targets), len(features)))
+        cost_matrix = np.zeros((len(targets), incoming_features.shape[0]), dtype=np.float32)
         for i, target in enumerate(targets):
-            cost_matrix[i, :] = self._metric(self.samples[target], features)
+            for j, features in enumerate(incoming_features):
+                cost_matrix[i, j] = self._metric(self.samples[target], features)
         return cost_matrix
     
     def restart(self):

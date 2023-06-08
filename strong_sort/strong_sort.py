@@ -63,11 +63,10 @@ class StrongSORT(object):
             ema_alpha, mc_lambda, matching_cascade, only_position, motion_gate_coefficient, 
             max_centroid_distance, max_velocity, track_killer, iou_cost_increment)
 
-    def update(self, bboxes_xyxy, confidences, classes, im0):
-        features = self.get_features(bboxes_xyxy, im0)
+    def update(self, bboxes_xyxy, confidences, classes, image):
         bboxes_tlwh = self.xyxy2tlwh(bboxes_xyxy)
         detections = [
-            Detection(classes[i], bboxes_tlwh[i], conf, features[i]) \
+            Detection(classes[i], bboxes_tlwh[i], conf, self.get_detection_features(bboxes_xyxy[i], image)) \
             for i, conf in enumerate(confidences)
         ]
 
@@ -89,18 +88,29 @@ class StrongSORT(object):
 
     def xyxy2tlwh(self, bboxes_xyxy):
         # Convert nx4 boxes from [x1, y1, x2, y2] to [x1, y1, w, h] where xy1=top-left, xy2=bottom-right
-        y = bboxes_xyxy.clone() if isinstance(bboxes_xyxy, torch.Tensor) else np.copy(bboxes_xyxy)
-        y[:, 2] = bboxes_xyxy[:, 2] - bboxes_xyxy[:, 0]  # width
-        y[:, 3] = bboxes_xyxy[:, 3] - bboxes_xyxy[:, 1]  # height
-        return y
+        tlwh = bboxes_xyxy.copy()
+        tlwh[:, 2] = bboxes_xyxy[:, 2] - bboxes_xyxy[:, 0]
+        tlwh[:, 3] = bboxes_xyxy[:, 3] - bboxes_xyxy[:, 1]
+        return tlwh
 
-    def get_features(self, bboxes_xyxy, image):
-        crops = []
-        for box in bboxes_xyxy:
-            x1, y1, x2, y2 = box
-            im = image[y1:y2, x1:x2]
-            crops.append(im)
-        return self.extractor(crops)
+    def get_detection_features(self, bbox_xyxy, image):
+        xmin, ymin, xmax, ymax = bbox_xyxy
+        xmean = bbox_xyxy[[0, 2]].mean().round().astype(np.int32)
+        ymean = bbox_xyxy[[1, 3]].mean().round().astype(np.int32)
+        x_sixth = ((xmax - xmin) / 6).round().astype(np.int32)
+        y_sixth = ((ymax - ymin) / 6).round().astype(np.int32)
+        crops = [
+            image[ymin : ymax, xmin : xmax],  # whole detection
+            image[ymin : ymax, xmin : xmean],  # top half
+            image[ymin : ymax, xmean : xmax],  # bottom half
+            image[ymin : ymean, xmin : xmax],  # left half
+            image[ymean : ymax, xmin : xmax],  # right half
+            image[ymin + y_sixth : ymax - y_sixth,  # core
+                  xmin + x_sixth : xmax - x_sixth]
+        ]
+        features = self.extractor(crops).detach().cpu().numpy().astype(np.float32)
+        features[:] = features / np.linalg.norm(features, axis=1, keepdims=True)
+        return features
     
     def restart(self):
         self.tracker.restart()

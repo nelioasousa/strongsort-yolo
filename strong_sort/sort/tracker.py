@@ -160,16 +160,16 @@ class Tracker:
             active_tracks.append(track.track_id)
             if not track.time_since_update:
                 updated_targets.append(track.track_id)
-                updated_features.append(track.feature)
-        self.appearance_metric.partial_fit(
-            np.asarray(updated_features), updated_targets, active_tracks)
+                updated_features.append(track.features)
+        updated_features = np.stack(updated_features, axis=0) if updated_targets else np.zeros((0,))
+        self.appearance_metric.partial_fit(updated_targets, updated_features, active_tracks)
 
     def gated_metric(self, tracks, detections, track_indices, detection_indices):
-        features = np.array([detections[i].feature for i in detection_indices])
+        detections_features = np.stack([detections[i].features for i in detection_indices], axis=0)
         measurements = np.asarray([detections[i].to_xyah() for i in detection_indices])
         targets = np.array([tracks[i].track_id for i in track_indices])
         # Appearance cost
-        appearance_cost_matrix = self.appearance_metric.distance(features, targets) # Num_targets x Num_features
+        appearance_cost_matrix = self.appearance_metric.distance(targets, detections_features)
         # Motion cost
         motion_cost_matrix = np.zeros_like(appearance_cost_matrix)
         motion_gate = np.zeros_like(appearance_cost_matrix, dtype=np.bool_)

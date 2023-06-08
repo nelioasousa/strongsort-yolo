@@ -76,7 +76,7 @@ class Track:
     def initialize(self, detection):
         self.class_id = detection.class_id
         self.conf = detection.confidence
-        self.feature = detection.feature / np.linalg.norm(detection.feature)
+        self.features = detection.features
         self.state = TrackState.Tentative if self._n_init > 0 else TrackState.Confirmed
         self.hits = 0  # initialization isn't considered a hit
         self.age = 1
@@ -282,10 +282,8 @@ class Track:
         self.mean, self.covariance = self.kf.update(
             self.mean, self.covariance, detection.to_xyah(), detection.confidence)
 
-        new_feature = detection.feature / np.linalg.norm(detection.feature)
-
-        self.feature[:] = self.ema_alpha * self.feature + (1 - self.ema_alpha) * new_feature
-        self.feature[:] = self.feature / np.linalg.norm(self.feature)
+        self.features[:] = self.ema_alpha * self.features + (1 - self.ema_alpha) * detection.features
+        self.features[:] = self.features / np.linalg.norm(self.features, axis=1, keepdims=True)
 
         self.hits += 1
         self.time_since_update = 0
