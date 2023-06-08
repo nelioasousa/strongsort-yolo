@@ -57,7 +57,7 @@ class Tracker:
         ):
         self.appearance_metric = appearance_metric
         self.max_appearance_distance = max_appearance_distance
-        self.max_motion_distance = kalman_filter.chi2inv95[2 if only_position else 4] * motion_gate_coefficient
+        self.max_motion_distance = (kalman_filter.chi2inv95[2 if only_position else 4] * motion_gate_coefficient) ** (1/2)
         self.max_iou_distance = max_iou_distance
         self.max_centroid_distance = max_centroid_distance
         self.max_velocity = max_velocity
@@ -172,13 +172,12 @@ class Tracker:
         appearance_cost_matrix = self.appearance_metric.distance(targets, detections_features)
         # Motion cost
         motion_cost_matrix = np.zeros_like(appearance_cost_matrix)
-        motion_gate = np.zeros_like(appearance_cost_matrix, dtype=np.bool_)
         for row, track_idx in enumerate(track_indices):
             track = tracks[track_idx]
-            cost_line = track.kf.gating_distance(
-                track.mean, track.covariance, measurements, self.only_position)
-            motion_gate[row] = cost_line > self.max_motion_distance
-            motion_cost_matrix[row] = np.sqrt(cost_line) / np.sqrt(cost_line.max())  # range between 0 and 1
+            motion_cost_matrix[row] = np.sqrt(
+                track.kf.gating_distance(track.mean, track.covariance, measurements, self.only_position))
+        motion_gate = motion_cost_matrix > self.max_motion_distance
+        motion_cost_matrix[:] = motion_cost_matrix / motion_cost_matrix.max()  # range between 0 and 1
         # Gate
         gate = appearance_cost_matrix > self.max_appearance_distance
         gate[:] = np.logical_or(gate, motion_gate)
