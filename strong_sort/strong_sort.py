@@ -66,7 +66,7 @@ class StrongSORT(object):
     def update(self, bboxes_xyxy, confidences, classes, image):
         bboxes_tlwh = self.xyxy2tlwh(bboxes_xyxy)
         detections = [
-            Detection(classes[i], bboxes_tlwh[i], conf, self.get_detection_features(bboxes_xyxy[i], image)) \
+            Detection(classes[i], bboxes_tlwh[i], conf, self.get_detection_feature(bboxes_xyxy[i], image)) \
             for i, conf in enumerate(confidences)
         ]
 
@@ -93,24 +93,13 @@ class StrongSORT(object):
         tlwh[:, 3] = bboxes_xyxy[:, 3] - bboxes_xyxy[:, 1]
         return tlwh
 
-    def get_detection_features(self, bbox_xyxy, image):
+    def get_detection_feature(self, bbox_xyxy, image):
         xmin, ymin, xmax, ymax = bbox_xyxy
-        xmean = bbox_xyxy[[0, 2]].mean().round().astype(np.int32)
-        ymean = bbox_xyxy[[1, 3]].mean().round().astype(np.int32)
-        x_sixth = ((xmax - xmin) / 6).round().astype(np.int32)
-        y_sixth = ((ymax - ymin) / 6).round().astype(np.int32)
-        crops = [
-            image[ymin : ymax, xmin : xmax],  # whole detection
-            image[ymin : ymax, xmin : xmean],  # top half
-            image[ymin : ymax, xmean : xmax],  # bottom half
-            image[ymin : ymean, xmin : xmax],  # left half
-            image[ymean : ymax, xmin : xmax],  # right half
-            image[ymin + y_sixth : ymax - y_sixth,  # core
-                  xmin + x_sixth : xmax - x_sixth]
-        ]
-        features = self.extractor(crops).detach().cpu().numpy().astype(np.float32)
-        features[:] = features / np.linalg.norm(features, axis=1, keepdims=True)
-        return features
+        crop = image[ymin : ymax, xmin : xmax].copy()
+        crop[np.random.uniform(size=crop.shape[:2]) > 0.75] = (0, 0, 0)
+        feature = self.extractor(crop)[0].detach().cpu().numpy().astype(np.float32)
+        feature[:] = feature / np.linalg.norm(feature)
+        return feature
     
     def restart(self):
         self.tracker.restart()
