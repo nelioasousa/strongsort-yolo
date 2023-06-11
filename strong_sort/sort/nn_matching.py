@@ -68,8 +68,9 @@ def _nn_euclidean_distance(x, y):
     """
     x_ = torch.from_numpy(x)
     y_ = torch.from_numpy(y)
-    l2_dist = compute_distance_matrix(x_, y_, metric='euclidean').detach().cpu().numpy()
-    return l2_dist.min() / 2.0  # greatest distance between unit vectors is 2
+    distances = compute_distance_matrix(x_, y_, metric='euclidean')
+    # greatest distance between unit vectors is 2
+    return distances.detach().cpu().numpy().min(axis=0).mean() / 2.0
 
 
 def _nn_cosine_distance(x, y):
@@ -88,7 +89,8 @@ def _nn_cosine_distance(x, y):
     """
     x_ = torch.from_numpy(x)
     y_ = torch.from_numpy(y)
-    return compute_distance_matrix(x_, y_, metric='cosine').detach().cpu().numpy().min()
+    distances = compute_distance_matrix(x_, y_, metric='cosine')
+    return distances.detach().cpu().numpy().min(axis=0).mean()
 
 
 class NearestNeighborDistanceMetric(object):
