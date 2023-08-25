@@ -89,11 +89,11 @@ class StrongSORT(object):
         self.tracker.increment_ages()
 
     def xyxy2tlwh(self, bboxes_xyxy):
-        # Convert nx4 boxes from [x1, y1, x2, y2] to [x1, y1, w, h] where xy1=top-left, xy2=bottom-right
-        y = bboxes_xyxy.clone() if isinstance(bboxes_xyxy, torch.Tensor) else np.copy(bboxes_xyxy)
-        y[:, 2] = bboxes_xyxy[:, 2] - bboxes_xyxy[:, 0]  # width
-        y[:, 3] = bboxes_xyxy[:, 3] - bboxes_xyxy[:, 1]  # height
-        return y
+        # Convert Nx4 boxes from [x1, y1, x2, y2] to [x1, y1, w, h] where xy1=top-left, xy2=bottom-right
+        tlwh = bboxes_xyxy.copy()
+        tlwh[:, 2] = bboxes_xyxy[:, 2] - bboxes_xyxy[:, 0]
+        tlwh[:, 3] = bboxes_xyxy[:, 3] - bboxes_xyxy[:, 1]
+        return tlwh
 
     def get_features(self, bboxes_xyxy, image):
         crops = []

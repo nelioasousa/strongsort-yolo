@@ -247,36 +247,31 @@ def detect(opt):
         t3 = time_synchronized()
         dt[1] += t3 - t2
         # Apply NMS
-        pred = yolov5_non_max_suppression(
-            pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
+        detections = yolov5_non_max_suppression(
+            pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)[0]
         dt[2] += time_synchronized() - t3
-
-        # # Apply Classifier
-        # if classify:
-        #     pred = apply_classifier(pred, modelc, img, im0)
         
         # Process detections
-        detections = pred[0]  # Only one batch was forward in the detection
         # Rescale boxes from img_size to im0 size
         detections[:, :4] = scale_coords(img.shape[2:], detections[:, :4], im0.shape).round()
-        detections = detection_filter(detections)
+        detections = detection_filter(detections).detach().cpu().numpy()
         
         if opt.ecc:  # camera motion compensation
             strong_sort.tracker.camera_update(prev_frames, curr_frames)
         
         # gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh ### ????
         if detections.any():
-            xyxys = detections[:, :4].type(torch.int32)
-            confs = detections[:, 4]
-            classes = detections[:, 5].type(torch.int32)
+            xyxys = detections[:, :4].astype(np.int32)
+            confs = detections[:, 4].astype(np.float32)
+            classes = detections[:, 5].astype(np.int32)
 
-            cls_counts = zip(*torch.unique(classes, return_counts=True))
+            cls_counts = zip(*np.unique(classes, return_counts=True))
             cls_counts = [f'{names[i.item()]} x{j.item()}' for i, j in cls_counts]
             result_message += f' {" ".join(cls_counts)} |'
 
             # pass detections to strongsort
             t4 = time_synchronized()
-            sort_output = strong_sort.update(xyxys.cpu(), confs.cpu(), classes.cpu(), im0)
+            sort_output = strong_sort.update(xyxys, confs, classes, im0[:, :, ::-1])
             t5 = time_synchronized()
             dt[3] += t5 - t4
             
