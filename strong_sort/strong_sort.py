@@ -101,7 +101,9 @@ class StrongSORT(object):
             x1, y1, x2, y2 = box
             im = image[y1:y2, x1:x2]
             crops.append(im)
-        return self.extractor(crops)
+        features = self.extractor(crops).detach().cpu().numpy().astype(np.float32)
+        features = features / np.linalg.norm(features, axis=1, keepdims=True)
+        return features
     
     def restart(self):
         self.tracker.restart()
