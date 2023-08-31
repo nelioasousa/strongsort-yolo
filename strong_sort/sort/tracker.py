@@ -56,8 +56,9 @@ class Tracker:
             iou_cost_increment = 0.0
         ):
         self.appearance_metric = appearance_metric
-        self.max_appearance_distance = max_appearance_distance
-        self.max_motion_distance = kalman_filter.chi2inv95[2 if only_position else 4] * motion_gate_coefficient
+        self.max_appearance_distance = max_appearance_distance / 2
+        self.max_motion_distance = kalman_filter.chi2inv95[2 if only_position else 4]
+        self.max_motion_distance = (self.max_motion_distance * motion_gate_coefficient) ** 0.5
         self.max_iou_distance = max_iou_distance
         self.max_centroid_distance = max_centroid_distance
         self.max_velocity = max_velocity
@@ -168,16 +169,15 @@ class Tracker:
         targets = [tracks[i].track_id for i in track_indices]
         measurements = np.asarray([detections[i].to_xyah() for i in detection_indices])
         # Appearance cost
-        appearance_cost_matrix = self.appearance_metric.distance(features, targets) # Num_targets x Num_features
+        appearance_cost_matrix = self.appearance_metric.distance(features, targets)
         # Motion cost
         motion_cost_matrix = np.zeros_like(appearance_cost_matrix)
-        motion_gate = np.zeros_like(appearance_cost_matrix, dtype=np.bool_)
         for row, track_idx in enumerate(track_indices):
             track = tracks[track_idx]
-            cost_line = track.kf.gating_distance(
+            motion_cost_matrix[row] = track.kf.gating_distance(
                 track.mean, track.covariance, measurements, self.only_position)
-            motion_gate[row] = cost_line > self.max_motion_distance
-            motion_cost_matrix[row] = np.sqrt(cost_line) / np.sqrt(cost_line.max())  # range between 0 and 1
+        motion_cost_matrix = np.sqrt(motion_cost_matrix) / self.max_motion_distance
+        motion_gate = motion_cost_matrix > 1.0
         # Gate
         gate = appearance_cost_matrix > self.max_appearance_distance
         gate[:] = np.logical_or(gate, motion_gate)
@@ -191,7 +191,7 @@ class Tracker:
         appearance_cost_matrix[gate] = appearance_cost_matrix[gate] + linear_assignment.INFTY_COST
         return appearance_cost_matrix
 
-    def _match(self, detections):        
+    def _match(self, detections):
         # Split track set into confirmed and unconfirmed tracks.
         confirmed_tracks = [i for i, t in enumerate(self.tracks) if t.is_confirmed()]
         unconfirmed_tracks = [i for i, t in enumerate(self.tracks) if t.is_tentative()]
