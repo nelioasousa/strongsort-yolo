@@ -82,8 +82,8 @@ class StrongSORT(object):
             if not track.is_confirmed() or track.time_since_update:
                 continue
             det = track.last_association
-            outputs.append([track.track_id, det.class_id, *det.tlwh, det.confidence])
-        return np.asarray(outputs)
+            outputs.append([track.track_id, det.class_id, *det.tlwh.tolist(), det.confidence])
+        return np.array(outputs, dtype=np.float32)
 
     def increment_ages(self):
         self.tracker.increment_ages()

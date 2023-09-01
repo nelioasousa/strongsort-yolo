@@ -117,7 +117,8 @@ class Track:
         ret[2:] = ret[:2] + ret[2:]
         return ret
 
-    def last_associated_bbox(self):
+    @property
+    def last_associated_xyah(self):
         """Get the `(centroid x, centroid y, aspec ratio, height)` bounding box
         from the last measurement associated to the track.
         
