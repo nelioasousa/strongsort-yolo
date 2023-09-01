@@ -133,10 +133,6 @@ def detect(opt):
     save_dir = Path(increment_path(Path(opt.project).absolute() / opt.name, exist_ok=opt.exist_ok))
     (save_dir / 'labels' if opt.save_txt else save_dir).mkdir(parents=True, exist_ok=True)
 
-    if opt.save_txt:
-        save_txt_fmt = ' '.join(['%d'] * 7 + (['%.2f'] if opt.save_conf else []))
-        save_txt_cols = list(range(8 if opt.save_conf else 7))
-
     save_argparser_arguments(opt, str(save_dir / 'arguments.txt'), False)
 
     # Initialize
@@ -276,11 +272,19 @@ def detect(opt):
             dt[3] += t5 - t4
             
             if sort_output.any():
-                sort_output = np.c_[np.repeat([[frame_id]], sort_output.shape[0], axis=0), sort_output]
+                sort_output = np.c_[np.full((sort_output.shape[0], 1), frame_id), sort_output]
                 if opt.save_txt:
-                    # frame_id, track_id, clas_id, tlwh bbox, detection conf
-                    with open(txt_path, mode='a') as f:
-                        np.savetxt(f, sort_output[:, save_txt_cols], fmt=save_txt_fmt)
+                    if opt.mot_format:
+                        # <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
+                        mot_output = np.c_[sort_output[:, [0, 1, 3, 4, 5, 6, 7]], 
+                                           np.full((sort_output.shape[0], 3), -1)]
+                        with open(txt_path, mode='a') as f:
+                            np.savetxt(f, mot_output, fmt='%d,%d,%d,%d,%d,%d,%.5f,%d,%d,%d')
+                        del mot_output
+                    else:
+                        # <frame>, <id>, <class>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>
+                        with open(txt_path, mode='a') as f:
+                            np.savetxt(f, sort_output, fmt='%d,%d,%d,%d,%d,%d,%d,%.5f')
                 
                 for output in sort_output:
                     track_id, cls = output[[1, 2]].astype(np.int32) 
@@ -498,15 +502,15 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        '--save-img', 
+        '--mot-format', 
         action='store_true', 
-        help='Save processed images/frames to /project/name/images/*/*.jpg'
+        help='Use the MOTChallenge format to save the text file with the tracking results'
     )
 
     parser.add_argument(
-        '--save-conf', 
+        '--save-img', 
         action='store_true', 
-        help='Save detection confidences in --save-txt results'
+        help='Save processed images/frames to /project/name/images/*/*.jpg'
     )
 
     parser.add_argument(

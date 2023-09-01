@@ -104,7 +104,7 @@ class Tracker:
 
     def __centroid_distance_cost(self, tracks, detections, track_indices, detection_indices):
         tks_centroids = np.array(
-            [tracks[i].last_associated_bbox()[:2] for i in track_indices], dtype=np.int32)
+            [tracks[i].last_associated_xyah[:2] for i in track_indices], dtype=np.int32)
         dts_centroids = np.array(
             [detections[i].to_xyah()[:2] for i in detection_indices], dtype=np.int32)
         return np.array(
