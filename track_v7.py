@@ -15,11 +15,7 @@ from pathlib import Path
 
 import cv2
 import torch
-# import torch.backends.cudnn as cudnn
 import numpy as np
-
-# import pandas as pd
-# from collections import Counter
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -39,14 +35,12 @@ ROOT = Path(osp.relpath(ROOT, Path.cwd()))  # relative
 from yolov7.models.experimental import attempt_load
 from yolov7.utils.plots import get_rgb_colors
 from yolov7.utils.datasets import LoadImages
-from yolov7.utils.general import (check_img_size, check_requirements, check_imshow, 
-                                  yolov5_non_max_suppression, apply_classifier, scale_coords, 
-                                  xyxy2xywh, strip_optimizer, set_logging, increment_path,
-                                  save_argparser_arguments)
+from yolov7.utils.general import (check_img_size, yolov5_non_max_suppression, 
+                                  scale_coords, strip_optimizer, set_logging, 
+                                  increment_path, save_argparser_arguments)
 from yolov7.utils.plots import plot_one_box
-from yolov7.utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
+from yolov7.utils.torch_utils import select_device, time_synchronized, TracedModel
 
-# from strong_sort.utils.parser import get_config
 from strong_sort.strong_sort import StrongSORT
 
 
@@ -60,7 +54,6 @@ def get_detection_filter(rect_pt1, rect_pt2):
         y_inside = torch.logical_and(centroids[:, 1].ge(ys[0]), centroids[:, 1].le(ys[1]))
         return detections[torch.logical_and(x_inside, y_inside)]
     return detection_filter
-
 
 def get_line_function(pt1, pt2):
     """
@@ -98,13 +91,12 @@ def get_track_killer(line_killers):
         checkers = [get_line_reference_checker((x1, y1), (x2, y2), bool(higher)) \
                     for x1, y1, x2, y2, higher in line_killers]
         def track_killer(track):
-            centroid = track.last_association.to_xyah()[:2].tolist()
+            centroid = track.last_associated_xyah[:2].tolist()
             checks = np.array([checker(centroid) for checker in checkers], dtype=np.bool_)
             return checks.any()
         return track_killer
     else:
         return None
-
 
 def _build_strong_sort(opt):
     return StrongSORT(
@@ -127,7 +119,6 @@ def _build_strong_sort(opt):
 
 def detect(opt):
     assert osp.isdir(opt.source) or osp.isfile(opt.source), 'Source must be a video file or a directory'
-    # view_img = check_imshow()  # Cannot run in Colab
 
     # Directories
     save_dir = Path(increment_path(Path(opt.project).absolute() / opt.name, exist_ok=opt.exist_ok))
@@ -158,20 +149,12 @@ def detect(opt):
     else:
         detection_filter = lambda x: x
 
-    # # Second-stage classifier
-    # classify = False
-    # if classify:
-    #     modelc = load_classifier(name='resnet101', n=2)  # initialize
-    #     modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=device)['model']).to(device).eval()
-
     # Set Dataloader
     dataset = LoadImages(opt.source, img_size=imgsz, stride=stride)
     num_videos = sum(dataset.video_flag)
     num_images = dataset.nf - num_videos
     num_sources = num_videos + bool(num_images)
     source_padding = len(str(num_sources))
-
-    # cfg = get_config(config_file=opt.config_strongsort)
 
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
@@ -181,11 +164,8 @@ def detect(opt):
     if device.type != 'cpu':
         model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
     
-    t0 = time.time()
-    
-    # model.warmup(imgsz=(1 if pt else nr_sources, 3, *imgsz))  # warmup
-
     # Run tracking
+    t0 = time.time()
     dt = [0.0, 0.0, 0.0, 0.0]
     vid_writer, curr_frames, prev_frames, txt_path = [None] * 4
     strong_sort = _build_strong_sort(opt)
@@ -242,6 +222,7 @@ def detect(opt):
         pred = model(img, augment=opt.augment)[0]
         t3 = time_synchronized()
         dt[1] += t3 - t2
+
         # Apply NMS
         detections = yolov5_non_max_suppression(
             pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)[0]
@@ -255,7 +236,6 @@ def detect(opt):
         if opt.ecc:  # camera motion compensation
             strong_sort.tracker.camera_update(prev_frames, curr_frames)
         
-        # gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh ### ????
         if detections.any():
             xyxys = detections[:, :4].astype(np.int32)
             confs = detections[:, 4].astype(np.float32)
@@ -265,7 +245,7 @@ def detect(opt):
             cls_counts = [f'{names[i.item()]} x{j.item()}' for i, j in cls_counts]
             result_message += f' {" ".join(cls_counts)} |'
 
-            # pass detections to strongsort
+            # Pass detections to strongsort
             t4 = time_synchronized()
             sort_output = strong_sort.update(xyxys, confs, classes, im0[:, :, ::-1])
             t5 = time_synchronized()
@@ -323,51 +303,6 @@ def detect(opt):
                 f'{(1 if dataset.mode == "image" else (1 + dataset.count - max(num_images - 1, 0))): >{source_padding}}', 
                 num_sources, "-" * (s - 1) + ("-" if s == 20 else ">" if s else ""), p)
             print(result_message, end='', flush=True)
-        
-        # if opt.count:
-        #     itemDict = {}
-        #     ## NOTE: this works only if save-txt is true
-        #     try:
-        #         df = pd.read_csv(txt_path, header=None, delim_whitespace=True)
-        #         df = df.iloc[:, 0:3]
-        #         df.columns = ["frame_id", "class", "track_id"]
-        #         df = df[['class','track_id']]
-        #         df = df.groupby('track_id')['class'].apply(list).apply(lambda x: sorted(x)).reset_index()
-
-        #         df.colums = ["track_id", "class"]
-        #         df['class'] = df['class'].apply(lambda x: Counter(x).most_common(1)[0][0])
-        #         vc = df['class'].value_counts()
-        #         vc = dict(vc)
-
-        #         vc2 = {}
-        #         for key, val in enumerate(names):
-        #             vc2[key] = val
-        #         itemDict = dict((vc2[key], value) for (key, value) in vc.items())
-        #         itemDict  = dict(sorted(itemDict.items(), key=lambda item: item[0]))
-
-        #     except:
-        #         pass
-
-        #     if opt.save_txt:
-        #         ## overlay
-        #         display = im0.copy()
-        #         h, w = im0.shape[0], im0.shape[1]
-        #         x1, y1, x2, y2 = 10, 10, 10, 70
-        #         txt_size = cv2.getTextSize(str(itemDict), cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0]
-        #         cv2.rectangle(im0, (x1, y1 + 1), (txt_size[0] * 2, y2),(0, 0, 0),-1)
-        #         cv2.putText(im0, '{}'.format(itemDict), (x1 + 10, y1 + 35), cv2.FONT_HERSHEY_SIMPLEX,0.7, (210, 210, 210), 2)
-        #         cv2.addWeighted(im0, 0.7, display, 1 - 0.7, 0, im0)
-        
-        # current frame // tesing
-        # cv2.imwrite('testing.jpg', im0)
-
-        # Stream results
-        # if show_vid:
-        #     inf = (f'{result_message}Done. ({t2 - t1:.3f}s)')
-        #     # cv2.putText(im0, str(inf), (30, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (40, 40, 40), 2)
-        #     cv2.imshow(str(p), im0)  # Find a fix to also run in Colab
-        #     if cv2.waitKey(1) == ord('q'):  # q to quit
-        #         break
 
         if opt.save_img:
             file_name = f'{frame_id:0>{num_frames_padding}}_{base_name}.jpg'
@@ -519,13 +454,6 @@ if __name__ == '__main__':
         help='Save videos with the tracking results'
     )
 
-    ### Visualization
-    # parser.add_argument(
-    #     '--show-vid', 
-    #     action='store_true', 
-    #     help='Display results while processing'
-    # )
-
     parser.add_argument(
         '--line-thickness', 
         type=int, default=2, 
@@ -557,21 +485,6 @@ if __name__ == '__main__':
     )
 
     ### StrongSORT
-    # Now need to change the model in the source code
-    # See https://github.com/KaiyangZhou/deep-person-reid for more models
-    # parser.add_argument(
-    #     '--strong-sort-weights', 
-    #     type=str, default=(WEIGHTS / 'osnet_x0_25_msmt17.pt'),
-    #     help='Path to feature extractor model file for peron/object reid'
-    # )
-
-    # Now need to supply StrongSORT configurations as CLI arguments
-    # parser.add_argument(
-    #     '--config-strongsort', 
-    #     type=str, default='strong_sort/configs/strong_sort.yaml', 
-    #     help='Path to yaml file for StrongSORT() instantiation/configuration'
-    # )
-
     parser.add_argument(
         '--matching-cascade',
         action='store_true',
@@ -667,8 +580,6 @@ if __name__ == '__main__':
 
     opt = parser.parse_args()
     print(opt)
-    #check_requirements(exclude=('pycocotools', 'thop'))
-
     with torch.no_grad():
         if opt.update:  # update all models (to fix SourceChangeWarning)
             detect(opt)
