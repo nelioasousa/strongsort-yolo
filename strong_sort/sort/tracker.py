@@ -41,7 +41,7 @@ class Tracker:
     def __init__(
             self, 
             appearance_metric, 
-            max_appearance_distance = 0.2,
+            max_appearance_distance = 0.2, 
             max_iou_distance = 0.9, 
             max_age = 30, 
             n_init = 3, 
@@ -51,9 +51,9 @@ class Tracker:
             only_position = False, 
             motion_gate_coefficient = 1.0, 
             max_centroid_distance = None, 
-            max_velocity = None,
-            track_killer = None,
-            iou_cost_increment = 0.0
+            max_velocity = None, 
+            track_killer = None, 
+            iou_distance_cost = False
         ):
         self.appearance_metric = appearance_metric
         self.max_appearance_distance = max_appearance_distance / 2
@@ -65,10 +65,10 @@ class Tracker:
         self.max_age = max_age
         self.n_init = n_init
         self.ema_alpha = ema_alpha
-        self.mc_lambda = mc_lambda
+        self.lmb = mc_lambda
         self.matching_cascade = matching_cascade
         self.only_position = only_position
-        self.iou_cost_increment = iou_cost_increment
+        self.iou_distance_cost = iou_distance_cost
 
         self.jump_gater = self.get_association_jump_gater()
         self.tracks = []
@@ -169,27 +169,27 @@ class Tracker:
         targets = [tracks[i].track_id for i in track_indices]
         measurements = np.asarray([detections[i].to_xyah() for i in detection_indices])
         # Appearance cost
-        appearance_cost_matrix = self.appearance_metric.distance(features, targets)
-        # Motion cost
-        motion_cost_matrix = np.zeros_like(appearance_cost_matrix)
+        appearance_cost = self.appearance_metric.distance(features, targets)
+        # Mahalanobis motion cost
+        mahalanobis_cost = np.zeros_like(appearance_cost)
         for row, track_idx in enumerate(track_indices):
             track = tracks[track_idx]
-            motion_cost_matrix[row] = track.kf.gating_distance(
+            mahalanobis_cost[row] = track.kf.gating_distance(
                 track.mean, track.covariance, measurements, self.only_position)
-        motion_cost_matrix = np.sqrt(motion_cost_matrix) / self.max_motion_distance
-        motion_gate = motion_cost_matrix > 1.0
+        mahalanobis_cost = np.sqrt(mahalanobis_cost) / self.max_motion_distance
+        motion_gate = mahalanobis_cost > 1.0
         # Gate
-        gate = appearance_cost_matrix > self.max_appearance_distance
+        gate = appearance_cost > self.max_appearance_distance
         gate[:] = np.logical_or(gate, motion_gate)
         gate[:] = np.logical_or(gate, self.jump_gater(tracks, detections, track_indices, detection_indices))
         # Final cost matrix
-        lmb = self.mc_lambda
-        appearance_cost_matrix[:] = lmb * appearance_cost_matrix + (1 - lmb) * motion_cost_matrix
-        if self.iou_cost_increment:
-            increment = iou_cost(tracks, detections, track_indices, detection_indices)
-            appearance_cost_matrix[:] = appearance_cost_matrix + self.iou_cost_increment * increment
-        appearance_cost_matrix[gate] = appearance_cost_matrix[gate] + linear_assignment.INFTY_COST
-        return appearance_cost_matrix
+        if self.iou_distance_cost:
+            iou_dist_cost = iou_cost(tracks, detections, track_indices, detection_indices)
+            appearance_cost[:] = self.lmb * appearance_cost + (1 - self.lmb) * iou_dist_cost
+        else:
+            appearance_cost[:] = self.lmb * appearance_cost + (1 - self.lmb) * mahalanobis_cost
+        appearance_cost[gate] += linear_assignment.INFTY_COST
+        return appearance_cost
 
     def _match(self, detections):
         # Split track set into confirmed and unconfirmed tracks.

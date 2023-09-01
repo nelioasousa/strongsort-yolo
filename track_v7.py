@@ -122,7 +122,7 @@ def _build_strong_sort(opt):
         max_centroid_distance=opt.max_centroid_distance, 
         max_velocity=opt.max_velocity,
         track_killer=get_track_killer(opt.line_track_kill),
-        iou_cost_increment=opt.iou_cost_increment)
+        iou_distance_cost=opt.iou_distance_cost)
 
 
 def detect(opt):
@@ -623,7 +623,7 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        '--motion-only-position',
+        '--motion-only-position', 
         action='store_true', 
         help='Use only centroid position to compute motion cost'
     )
@@ -652,13 +652,13 @@ if __name__ == '__main__':
         help=' '.join(['Kill a track based on its position in regard to a line.\n',
                        'Eg.: "--line-track-kill 10 10 90 90 1" will kill a track when it is above a line determined by points\n',
                        '     (10, 10) and (90, 90). Supply 0 instead of 1 at the end to kill when its below or intercepting the line.\n',
-                       '     If the points have the same x coordinate, 1 at the end kills tracks at the right of the line.'])
+                       '     If the points have the same x coordinate, 1 at the end kills tracks at the right of the line'])
     )
 
     parser.add_argument(
-        '--iou-cost-increment',
-        type=float, default=0.0, 
-        help='Increment motion-appearance cost matrix with IoU distance cost.'
+        '--iou-distance-cost', 
+        action='store_true', 
+        help='Use IoU distance instead of Mahalanobis distance in track-detection association'
     )
 
     opt = parser.parse_args()
