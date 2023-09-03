@@ -3,8 +3,6 @@ import numpy as np
 import sys
 import torch
 import os.path as osp
-
-sys.path.append(osp.abspath(osp.join(osp.dirname(__file__), '..', 'deep', 'reid')))
 from torchreid.metrics.distance import compute_distance_matrix
 
 
