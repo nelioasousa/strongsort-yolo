@@ -22,7 +22,8 @@ seaborn>=0.11.0
 
 easydict
 
-# torchreid
+# torchreid package : PyPi version is not working properly
+git+https://github.com/KaiyangZhou/deep-person-reid.git@566a56a2cb255f59ba75aa817032621784df546a
 
 Cython
 h5py
