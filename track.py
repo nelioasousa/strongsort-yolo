@@ -170,42 +170,40 @@ def detect(opt):
     vid_writer, curr_frames, prev_frames, txt_path = [None] * 4
     strong_sort = _build_strong_sort(opt)
     trajectorys = {}
-    
-    if num_images:
-        num_frames = num_images
-        num_frames_padding = len(str(num_frames))
-        txt_path = str(save_dir / 'labels' / 'image_sequence.txt')
-        if opt.save_vid:
-            vid_writer = cv2.VideoWriter(str(save_dir / 'video_from_imgs.mp4'), 
-                                         cv2.VideoWriter_fourcc(*'mp4v'), 
-                                         15, im0.shape[:2][::-1])
-        if opt.save_img:
-            imgs_path = save_dir / 'images' / 'imgs'
-            imgs_path.mkdir(parents=True, exist_ok=True)
 
     for path, img, im0, vid_cap in dataset:
         frame_id = getattr(dataset, 'frame', dataset.count)
         curr_frames = im0
         base_name = osp.splitext(osp.basename(path))[0]
         
-        if vid_cap and dataset.frame == 1:
-            strong_sort.restart()
-            trajectorys = {}
-            num_frames = dataset.nframes
-            num_frames_padding = len(str(num_frames))
-            txt_path = str(save_dir / 'labels' / f'{base_name}.txt')
-            if opt.save_img:
-                imgs_path = save_dir / 'images' / base_name
-                imgs_path.mkdir(parents=True, exist_ok=True)
-            if opt.save_vid:
-                try: vid_writer.release()
-                except AttributeError: pass
-                video_save_path = str(save_dir / f'{base_name}.mp4')
-                fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                resolution = (int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH)), 
-                              int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                vid_writer = cv2.VideoWriter(video_save_path, fourcc, fps, resolution)
+        if frame_id == 1:
+            if dataset.mode == 'image':
+                num_frames = num_images
+                num_frames_padding = len(str(num_frames))
+                txt_path = str(save_dir / 'labels' / 'image_sequence.txt')
+                if opt.save_vid:
+                    vid_writer = cv2.VideoWriter(str(save_dir / 'video_from_imgs.mp4'), 
+                                                 cv2.VideoWriter_fourcc(*'mp4v'), 
+                                                 10, im0.shape[:2][::-1])
+                if opt.save_img:
+                    imgs_path = save_dir / 'images' / 'imgs'
+                    imgs_path.mkdir(parents=True, exist_ok=True)
+            else:
+                strong_sort.restart()
+                trajectorys = {}
+                num_frames = dataset.nframes
+                num_frames_padding = len(str(num_frames))
+                txt_path = str(save_dir / 'labels' / f'{base_name}.txt')
+                if opt.save_img:
+                    imgs_path = save_dir / 'images' / base_name
+                    imgs_path.mkdir(parents=True, exist_ok=True)
+                if opt.save_vid:
+                    try: vid_writer.release()
+                    except AttributeError: pass
+                    video_save_path = str(save_dir / f'{base_name}.mp4')
+                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    vid_writer = cv2.VideoWriter(video_save_path, fourcc, fps, im0.shape[:2][::-1])
         
         result_message = 'source %d/%d (%dx%d %s) | frame %d/%d |' %(
             1 if dataset.mode == 'image' else (1 + dataset.count - max(num_images - 1, 0)), 
