@@ -393,7 +393,7 @@ if __name__ == '__main__':
     ### General
     parser.add_argument(
         '--source', 
-        type=str, default='.', 
+        type=str, default='./source/', 
         help='Source data (video file or directory with images or/and videos) for tracking'
     )
 
@@ -412,7 +412,7 @@ if __name__ == '__main__':
     ### Saving results
     parser.add_argument(
         '--project', 
-        default='runs/track', 
+        default='./runs/', 
         help='Save results to /project/name'
     )
 
