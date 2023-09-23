@@ -2,3 +2,9 @@
 	path = yolov7
 	url = https://github.com/nelioasousa/yolov7.git
 	branch = main
+[submodule "reid"]
+	path = reid
+	url = https://github.com/KaiyangZhou/deep-person-reid.git
+[submodule "TrackEval"]
+	path = TrackEval
+	url = https://github.com/JonathonLuiten/TrackEval.git

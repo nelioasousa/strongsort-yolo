@@ -1,50 +1,68 @@
-# pip install -r requirements.txt
+# Recommended to previously install torch and torchvision packages
+# conda is recommended as it automatically installs cudatoolkit in the virtual environment
+# >>> conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia
 
-numpy>=1.18.5
+
+# Already have the right version of CUDA installed? Uncomment the PyTorch packages right below
+
+### PyTorch
+# torch>=1.7.0,!=1.12.0
+# torchvision>=0.8.1,!=0.13.0
+
+
+### strongsort-yolo
+# numpy>=1.18.5
 opencv-python>=4.1.2
 Pillow>=7.1.2
 requests>=2.23.0
 scipy>=1.4.1
-torch>=1.7.0
-torchvision>=0.8.1
-# torchreid package : PyPi version is not working properly
-git+https://github.com/KaiyangZhou/deep-person-reid.git@566a56a2cb255f59ba75aa817032621784df546a
 
 
-### To use YOLOv7 from with this repository, uncomment all the following lines
-### and remove the numpy, torch and torchvision dependencies above, because 
-### they are less restrictive than the entries below
+### TrackEval (for basic usage only numpy and scipy are essentials)
+# numpy==1.18.1
+# scipy==1.4.1
+# pycocotools==2.0.2
+# matplotlib==3.2.1
+# opencv_python==4.4.0.46
+# scikit_image==0.16.2
+# pytest==6.0.1
+# Pillow==8.1.2
+# tqdm==4.64.0
+# tabulate
 
-# # Base ----------------------------------------
-# matplotlib>=3.2.2
-# numpy>=1.18.5,<1.24.0  # More restrictive
-# PyYAML>=5.3.1
-# torch>=1.7.0,!=1.12.0  # More restrictive
-# torchvision>=0.8.1,!=0.13.0  # More restrictive
-# tqdm>=4.41.0
-# protobuf<4.21.3
 
-# # Logging -------------------------------------
-# tensorboard>=2.4.1
-# # wandb
+### torchreid
+# numpy
+Cython
+h5py
+# Pillow
+six
+# scipy
+# opencv-python
+# matplotlib
+# tb-nightly
+future
+yacs
+gdown
+flake8
+yapf
+isort==4.3.21
+imageio
+chardet
 
-# # Plotting ------------------------------------
-# pandas>=1.1.4
-# seaborn>=0.11.0
 
-# # Export --------------------------------------
-# # coremltools>=4.1  # CoreML export
-# # onnx>=1.9.0  # ONNX export
-# # onnx-simplifier>=0.3.6  # ONNX simplifier
-# # scikit-learn==0.19.2  # CoreML quantization
-# # tensorflow>=2.4.1  # TFLite export
-# # tensorflowjs>=3.9.0  # TF.js export
-# # openvino-dev  # OpenVINO export
-
-# # Extras --------------------------------------
-# ipython  # interactive notebook
-# psutil  # system utilization
-# thop  # FLOPs computation
-# # albumentations>=1.0.3
-# # pycocotools>=2.0  # COCO mAP
-# # roboflow
+### YOLOv7
+matplotlib>=3.2.2
+numpy>=1.18.5,<1.24.0
+# opencv-python>=4.1.1
+# Pillow>=7.1.2
+PyYAML>=5.3.1
+# requests>=2.23.0
+# scipy>=1.4.1
+# torch>=1.7.0,!=1.12.0
+# torchvision>=0.8.1,!=0.13.0
+tqdm>=4.41.0
+protobuf<4.21.3
+tensorboard>=2.4.1
+pandas>=1.1.4
+seaborn>=0.11.0

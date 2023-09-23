@@ -1,13 +1,12 @@
 import numpy as np
-import torch
 import sys
-import gdown
 import os.path as osp
 
 from .sort.nn_matching import NearestNeighborDistanceMetric
 from .sort.detection import Detection
 from .sort.tracker import Tracker
 
+sys.path.append(osp.normpath(osp.join(osp.dirname(__file__), '..', 'reid')))
 from torchreid.utils import FeatureExtractor
 from torchreid.utils.tools import download_url
 
