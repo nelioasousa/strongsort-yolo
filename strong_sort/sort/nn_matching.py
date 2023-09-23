@@ -3,7 +3,9 @@ import numpy as np
 import sys
 import torch
 import os.path as osp
-from torchreid.metrics.distance import compute_distance_matrix
+
+sys.path.append(osp.normpath(osp.join(osp.dirname(__file__), '..', '..', 'reid')))
+from torchreid.metrics import compute_distance_matrix
 
 
 def _pdist(a, b):
