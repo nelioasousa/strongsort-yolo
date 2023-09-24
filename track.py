@@ -151,10 +151,8 @@ def detect(opt):
 
     # Set Dataloader
     dataset = LoadImages(opt.source, img_size=imgsz, stride=stride)
-    num_videos = sum(dataset.video_flag)
-    num_images = dataset.nf - num_videos
-    num_sources = num_videos + bool(num_images)
-    source_padding = len(str(num_sources))
+    num_sequences = dataset.num_sequences
+    seqs_padding = len(str(num_sequences))
 
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
@@ -171,43 +169,30 @@ def detect(opt):
     strong_sort = _build_strong_sort(opt)
     trajectorys = {}
 
-    for path, img, im0, vid_cap in dataset:
-        frame_id = getattr(dataset, 'frame', dataset.count)
+    for path, img, im0 in dataset:
         curr_frames = im0
-        base_name = osp.splitext(osp.basename(path))[0]
+
+        if dataset.frame == 1:
+            strong_sort.restart()
+            trajectorys = {}
+            num_frames_padding = len(str(dataset.total_frames))
+            if opt.save_txt:
+                txt_path = str(save_dir / 'labels' / f'{dataset.seq_name}.txt')
+            if opt.save_img:
+                imgs_path = save_dir / 'images' / dataset.seq_name
+                imgs_path.mkdir(parents=True, exist_ok=True)
+            if opt.save_vid:
+                try: vid_writer.release()
+                except AttributeError: pass
+                video_path = str(save_dir / f'{dataset.seq_name}.mp4')
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                fps = opt.image_sequences_fps if dataset.mode == 'image' else dataset.cap.get(cv2.CAP_PROP_FPS)
+                resolution = im0.shape[:2][::-1]
+                vid_writer = cv2.VideoWriter(video_path, fourcc, fps, resolution)
         
-        if frame_id == 1:
-            if dataset.mode == 'image':
-                num_frames = num_images
-                num_frames_padding = len(str(num_frames))
-                txt_path = str(save_dir / 'labels' / 'image_sequence.txt')
-                if opt.save_vid:
-                    vid_writer = cv2.VideoWriter(str(save_dir / 'video_from_imgs.mp4'), 
-                                                 cv2.VideoWriter_fourcc(*'mp4v'), 
-                                                 10, im0.shape[:2][::-1])
-                if opt.save_img:
-                    imgs_path = save_dir / 'images' / 'imgs'
-                    imgs_path.mkdir(parents=True, exist_ok=True)
-            else:
-                strong_sort.restart()
-                trajectorys = {}
-                num_frames = dataset.nframes
-                num_frames_padding = len(str(num_frames))
-                txt_path = str(save_dir / 'labels' / f'{base_name}.txt')
-                if opt.save_img:
-                    imgs_path = save_dir / 'images' / base_name
-                    imgs_path.mkdir(parents=True, exist_ok=True)
-                if opt.save_vid:
-                    try: vid_writer.release()
-                    except AttributeError: pass
-                    video_save_path = str(save_dir / f'{base_name}.mp4')
-                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                    vid_writer = cv2.VideoWriter(video_save_path, fourcc, fps, im0.shape[:2][::-1])
-        
-        result_message = 'source %d/%d (%dx%d %s) | frame %d/%d |' %(
-            1 if dataset.mode == 'image' else (1 + dataset.count - max(num_images - 1, 0)), 
-            num_sources, *im0.shape[:2][::-1], dataset.mode, frame_id, num_frames)
+        result_message = 'sequence %d/%d (%dx%d %s) | frame %d/%d |' %(
+            dataset.current_seq, num_sequences, *im0.shape[:2][::-1], 
+            dataset.mode, dataset.frame, dataset.total_frames)
 
         t1 = time_synchronized()
         img = torch.from_numpy(img).to(device)
@@ -226,31 +211,28 @@ def detect(opt):
             pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)[0]
         dt[2] += time_synchronized() - t3
         
-        # Process detections
-        # Rescale boxes from img_size to im0 size
-        detections[:, :4] = scale_coords(img.shape[2:], detections[:, :4], im0.shape).round()
-        detections = detection_filter(detections).detach().cpu().numpy()
-        
-        if opt.ecc:  # camera motion compensation
+        # Camera motion compensation
+        if opt.ecc:
             strong_sort.tracker.camera_update(prev_frames, curr_frames)
         
+        # Process detections
+        # Rescale bboxes from img_size to im0 size
+        detections[:, :4] = scale_coords(img.shape[2:], detections[:, :4], im0.shape).round()
+        detections = detection_filter(detections).detach().cpu().numpy()
         if detections.any():
             xyxys = detections[:, :4].astype(np.int32)
             confs = detections[:, 4].astype(np.float32)
             classes = detections[:, 5].astype(np.int32)
-
             cls_counts = zip(*np.unique(classes, return_counts=True))
             cls_counts = [f'{names[i.item()]} x{j.item()}' for i, j in cls_counts]
             result_message += f' {" ".join(cls_counts)} |'
-
             # Pass detections to strongsort
             t4 = time_synchronized()
             sort_output = strong_sort.update(xyxys, confs, classes, im0[:, :, ::-1])
             t5 = time_synchronized()
             dt[3] += t5 - t4
-            
             if sort_output.any():
-                sort_output = np.c_[np.full((sort_output.shape[0], 1), frame_id), sort_output]
+                sort_output = np.c_[np.full((sort_output.shape[0], 1), dataset.frame), sort_output]
                 if opt.save_txt:
                     if opt.mot_format:
                         # <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
@@ -258,12 +240,10 @@ def detect(opt):
                                            np.full((sort_output.shape[0], 3), -1)]
                         with open(txt_path, mode='a') as f:
                             np.savetxt(f, mot_output, fmt='%d,%d,%d,%d,%d,%d,%.5f,%d,%d,%d')
-                        del mot_output
                     else:
                         # <frame>, <id>, <class>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>
                         with open(txt_path, mode='a') as f:
                             np.savetxt(f, sort_output, fmt='%d,%d,%d,%d,%d,%d,%d,%.5f')
-                
                 for output in sort_output:
                     track_id, cls = output[[1, 2]].astype(np.int32) 
                     tlwh = output[3:7]
@@ -278,7 +258,6 @@ def detect(opt):
                             except IndexError:
                                 break
                             cv2.line(im0, c0, c1, colors[cls], 3)
-
                     if opt.save_vid:  # Add bbox to image
                         xyxy = tlwh.astype(np.int32)
                         xyxy[2:] = xyxy[:2] + xyxy[2:]
@@ -287,7 +266,6 @@ def detect(opt):
                                                               f'{track_id} {conf:.2f}' if opt.hide_class else \
                                                               f'{track_id} {names[cls]} {conf:.2f}')
                         plot_one_box(xyxy, im0, label=label, color=colors[cls], line_thickness=opt.line_thickness)
-
         else:
             strong_sort.increment_ages()
             result_message += ' None detections |'
@@ -295,19 +273,17 @@ def detect(opt):
         if opt.verbose:
             print(f'{result_message} YOLO {dt[1]:.3e}s, StrongSORT {dt[3]:.3e}s')
         else:
-            p = 100.0 * frame_id / num_frames
-            s = int(p // 5)
-            result_message = '\r{} of {} sources [{: <20}] {:.1f}% '.format(
-                f'{(1 if dataset.mode == "image" else (1 + dataset.count - max(num_images - 1, 0))): >{source_padding}}', 
-                num_sources, "-" * (s - 1) + ("-" if s == 20 else ">" if s else ""), p)
+            p = 100.0 * dataset.frame / dataset.total_frames
+            result_message = '\rsequence {} of {} [{: <20}] {:.1f}% '.format(
+                f'% {seqs_padding}d' %dataset.current_seq, num_sequences, "-" * int(p // 5), p)
             print(result_message, end='', flush=True)
-
+        
         if opt.save_img:
-            file_name = f'{frame_id:0>{num_frames_padding}}_{base_name}.jpg'
+            file_name = f'{dataset.seq_name}_{dataset.frame:0>{num_frames_padding}}.jpg'
             save_img_result = cv2.imwrite(str(imgs_path / file_name), im0)
             if not save_img_result and opt.verbose:
                 print('Error while saving image/frame:')
-                print('    - Frame ID :', frame_id)
+                print('    - Frame ID :', dataset.frame)
                 print('    - File     :', path)
         
         if opt.save_vid:
@@ -315,11 +291,8 @@ def detect(opt):
 
         prev_frames = curr_frames
     
-    try:
-        vid_writer.release()
-        vid_cap.release()
-    except AttributeError:
-        pass
+    try: vid_writer.release()
+    except AttributeError: pass
     
     if opt.save_txt or opt.save_vid or opt.save_img:
         print(f'Results saved to {save_dir}')
@@ -574,6 +547,12 @@ if __name__ == '__main__':
         '--iou-distance-cost', 
         action='store_true', 
         help='Use IoU distance instead of Mahalanobis distance in track-detection association'
+    )
+
+    parser.add_argument(
+        '--image-sequences-fps',
+        type=float, default=10.0,
+        help='FPS for videos outputted from image sequences'
     )
 
     opt = parser.parse_args()
